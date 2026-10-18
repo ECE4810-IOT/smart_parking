@@ -159,6 +159,14 @@ class KioskServer:
                     "code": code, "ttl_min": gw.cfg["access"]["enrol_code_ttl_min"]}
         if action == "removeuser":
             return {"ok": gw.access.remove_user(arg), "message": f"Removed {arg}"}
+        if action == "resetpin":
+            try:
+                code = gw.access.reset_pin(arg)
+            except ValueError as e:
+                return {"ok": False, "message": str(e)}
+            return {"ok": True, "message": f"PIN reset for '{arg.lower()}'. New enrolment code: {code} - "
+                                           f"they repeat New user setup with it.",
+                    "code": code, "ttl_min": gw.cfg["access"]["enrol_code_ttl_min"]}
         if action == "unlockuser":
             gw.access.unlock_user(arg)
             return {"ok": True, "message": f"Lockout cleared for {arg}"}

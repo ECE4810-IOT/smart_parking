@@ -57,6 +57,7 @@ class AccessRequest:
     attempts: int = 0
     created: float = field(default_factory=time.time)
     delivered_ms: float | None = None
+    cipher_mac: bytes = b""     # lets the admin log tell 'wrong PIN' from 'mistyped code'
 
 
 @dataclass
@@ -67,6 +68,13 @@ class RequestOutcome:
     username: str | None = None
     reason: str = "ok"              # internal only - never shown on the kiosk
     expires_in: int = 60
+
+    @property
+    def ref(self) -> str:
+        """Short reference shown on BOTH the kiosk and the Telegram message, so the user can
+        tell which message belongs to this attempt. Derived from the random request id, so it
+        reveals nothing (and exists for unknown users too)."""
+        return hashlib.sha256(self.request_id.encode()).hexdigest()[:4].upper()
 
 
 @dataclass
@@ -141,6 +149,21 @@ class AccessManager:
             self.vault.save()
             return True, "Setup complete"
 
+    def reset_pin(self, username: str) -> str:
+        """Forgotten / mistyped PIN: keep the Telegram link, issue a new enrolment code so the
+        user can choose a new PIN at the kiosk (New user setup)."""
+        with self._lock:
+            username = normalise_username(username)
+            user = self._user(username)
+            if not user:
+                raise ValueError("no such user")
+            code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(8))
+            user.update(status="pending", pin=None, enrol_hash=_hash_code(code),
+                        enrol_expires=time.time() + self.cfg["enrol_code_ttl_min"] * 60)
+            self._fail.pop(username, None)
+            self.vault.save()
+            return code
+
     def remove_user(self, username: str) -> bool:
         with self._lock:
             ok = self.vault.users.pop(normalise_username(username), None) is not None
@@ -214,6 +237,14 @@ class AccessManager:
                 self._requests[rid] = dummy
                 return RequestOutcome(rid, username=username, reason="locked", expires_in=ttl)
             if now - self._last_request.get(username, 0) < self.cfg["request_cooldown_s"]:
+                # Asked again too soon (e.g. pressed Back and re-entered the username). Do NOT hand
+                # out a dummy request - the code already on their phone would then never work.
+                # Re-use the still-valid pending request instead; no new Telegram message is sent.
+                pending = next((q for q in self._requests.values()
+                                if q.username == username and q.expires > now), None)
+                if pending:
+                    return RequestOutcome(pending.request_id, username=username, reason="cooldown_reuse",
+                                          expires_in=int(pending.expires - now))
                 self._requests[rid] = dummy
                 return RequestOutcome(rid, username=username, reason="cooldown", expires_in=ttl)
             self._last_request[username] = now
@@ -222,9 +253,10 @@ class AccessManager:
                 self._requests.pop(r)
 
             otp = generate_otp()
-            self._requests[rid] = AccessRequest(rid, username, hmac_sha256(self._mac_key, otp.encode()),
-                                                now + ttl)
             cipher = vigenere_digits_encrypt(otp, user["pin"])
+            self._requests[rid] = AccessRequest(rid, username, hmac_sha256(self._mac_key, otp.encode()),
+                                                now + ttl,
+                                                cipher_mac=hmac_sha256(self._mac_key, b"c:" + cipher.encode()))
             del otp  # plaintext OTP is not kept anywhere
             return RequestOutcome(rid, deliver_to=user["chat_id"], cipher=cipher, username=username,
                                   expires_in=ttl)
@@ -254,8 +286,13 @@ class AccessManager:
             left = max(0, max_att - req.attempts)
             if left == 0 or locked:
                 self._requests.pop(request_id, None)
-            return VerifyOutcome(False, username=req.username, attempts_left=left, locked=locked,
-                                 reason="locked" if locked else "bad_code")
+            # Diagnosis for the admin log only (the kiosk always shows the same generic message):
+            # code typed exactly as sent -> the PIN was wrong; otherwise the code itself was wrong
+            # (mistyped, decoded by hand, an old message, or the two fields swapped).
+            code_ok = bool(req.cipher_mac) and const_eq(hmac_sha256(self._mac_key, b"c:" + code.encode()),
+                                                        req.cipher_mac)
+            reason = "bad_pin" if code_ok else ("bad_code" if req.username else "no_such_request")
+            return VerifyOutcome(False, username=req.username, attempts_left=left, locked=locked, reason=reason)
 
     def pending_request(self, request_id: str) -> AccessRequest | None:
         return self._requests.get(request_id)

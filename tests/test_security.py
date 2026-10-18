@@ -213,3 +213,31 @@ def test_expiry(access):
     access._requests[out.request_id].expires = time.time() - 1
     r = access.verify(out.request_id, out.cipher, "246810")
     assert not r.ok and r.expired
+
+
+def test_rerequest_within_cooldown_keeps_the_code_valid(tmp_path):
+    v = Vault.create(tmp_path / "v.json", "CorrectHorse9", {"users": {}}, n=FAST_N)
+    am = AccessManager(v, dict(ACCESS, request_cooldown_s=30))
+    code = am.create_user("carol")
+    am.link_telegram("carol", code, "1003")
+    am.complete_setup("carol", code, "246810")
+    first = am.request_otp("carol")
+    again = am.request_otp("carol")          # user pressed Back and asked again within 30 s
+    assert again.deliver_to is None and again.request_id == first.request_id and again.ref == first.ref
+    assert am.verify(again.request_id, first.cipher, "246810").ok   # the code on the phone still works
+
+
+def test_failure_reason_distinguishes_pin_from_code(access):
+    out = access.request_otp("alice")
+    assert access.verify(out.request_id, out.cipher, "135792").reason == "bad_pin"
+    out = access.request_otp("alice")
+    assert access.verify(out.request_id, "000000", "246810").reason == "bad_code"
+
+
+def test_reset_pin_keeps_telegram(access):
+    code = access.reset_pin("alice")
+    assert access.vault.users["alice"]["chat_id"] == "1001"
+    assert access.request_otp("alice").deliver_to is None          # pending until new PIN is set
+    assert access.complete_setup("alice", code, "802468")[0]
+    out = access.request_otp("alice")
+    assert access.verify(out.request_id, out.cipher, "802468").ok

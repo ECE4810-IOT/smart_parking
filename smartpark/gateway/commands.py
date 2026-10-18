@@ -27,6 +27,7 @@ ADMIN_HELP = """Admin commands
 /threshold <bay|all> <cm> - set the occupied threshold
 /adduser <name> - create a user (returns enrolment code)
 /removeuser <name>, /users, /unlockuser <name>
+/resetpin <name> - new enrolment code so the user can choose a new PIN
 /night on|off - closed-hours security mode
 /open - open the barrier manually
 /alerts - last 10 alerts
@@ -214,6 +215,18 @@ class CommandRouter:
         lines = [f"{u['username']}: {u['status']}{' | telegram' if u['telegram'] else ''}"
                  f"{' | LOCKED' if u['locked'] else ''}" for u in users]
         self._reply(chat, "Users\n" + "\n".join(lines))
+
+    def admin_resetpin(self, chat, args):
+        if len(args) != 1:
+            return self._reply(chat, "Usage: /resetpin <username>")
+        try:
+            code = self.gw.access.reset_pin(args[0])
+        except ValueError as e:
+            return self._reply(chat, f"Could not reset: {e}")
+        ttl = self.gw.cfg["access"]["enrol_code_ttl_min"]
+        self._reply(chat, f"PIN reset for '{args[0].lower()}'. New enrolment code: {code} (valid {ttl} min).\n"
+                          f"Their Telegram stays linked - they just do 'New user setup' at the kiosk again "
+                          f"with this code and choose a new PIN.")
 
     def admin_unlockuser(self, chat, args):
         if len(args) != 1:

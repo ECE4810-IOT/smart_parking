@@ -117,3 +117,5 @@ body.kb-open main { padding-bottom: 380px; }
   .free-count { font-size: 56px; }
   .admin-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+.ref-hint { margin: 2px 0 6px; font-size: 18px; color: var(--amber); font-weight: 600; }

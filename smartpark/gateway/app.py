@@ -387,8 +387,9 @@ class Gateway:
                         metric("auth", stage="otp_delivered", outcome="ok", ms=round(p.delivered_ms, 1))
             spaced = " ".join(out.cipher)
             self.tg.send(out.deliver_to,
-                         f"SmartPark access code: {spaced}\n\nEnter this code AND your 6-digit PIN at the kiosk "
-                         f"within {out.expires_in} s. The kiosk decodes it - never share your PIN.\n"
+                         f"SmartPark access code: {spaced}\n(Ref {out.ref})\n\n"
+                         f"At the kiosk, type this code exactly as shown AND your 6-digit PIN within "
+                         f"{out.expires_in} s - do not decode it yourself. Only the newest code works.\n"
                          f"Didn't request this? Ignore it and tell the car park admin.",
                          kind="otp", ttl_s=out.expires_in, on_sent=remember)
             timer = threading.Timer(out.expires_in + 2, self._delete_otp_msg, args=(rid,))
@@ -408,7 +409,7 @@ class Gateway:
             self.alert("Kiosk request rate limit hit (possible abuse)")
         metric("auth", stage="request", outcome=out.reason, ms=round((time.perf_counter() - t0) * 1000, 2))
         # identical answer for every case -> kiosk cannot be used to discover usernames
-        return {"status": "sent", "request_id": out.request_id, "expires_in": out.expires_in}
+        return {"status": "sent", "request_id": out.request_id, "expires_in": out.expires_in, "ref": out.ref}
 
     def _delete_otp_msg(self, rid: str):
         item = self._otp_msgs.pop(rid, None)
@@ -419,7 +420,10 @@ class Gateway:
         t0 = time.perf_counter()
         res = self.access.verify(request_id, code, pin)
         if not res.ok:
-            metric("auth", stage="verify", outcome=res.reason, ms=round((time.perf_counter() - t0) * 1000, 2))
+            metric("auth", stage="verify", outcome=res.reason + ("+locked" if res.locked else ""),
+                   ms=round((time.perf_counter() - t0) * 1000, 2))
+            log.info("Kiosk verify failed for %s: %s (%d attempt(s) left)", res.username or "?", res.reason,
+                     res.attempts_left)
             if res.locked and res.username:
                 self.alert(f"User '{res.username}' locked after repeated wrong codes at the kiosk")
                 self.notify_user(res.username, "Security notice: your access code was entered wrongly several "

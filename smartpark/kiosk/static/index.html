@@ -68,9 +68,10 @@
   <section id="scr-code" class="screen">
     <div class="panel narrow">
       <h1>Enter your code</h1>
-      <p class="muted">Check Telegram. Type the 6-digit code you received and your 6-digit PIN - the kiosk decrypts the code with your PIN.</p>
+      <p class="muted">Check Telegram. Type the 6-digit code exactly as received (don't decode it yourself) and your 6-digit PIN - the kiosk decrypts the code with your PIN.</p>
       <div class="timer"><div id="timer-bar"></div></div>
       <p class="muted small" id="timer-text"></p>
+      <p class="ref-hint" id="code-ref"></p>
       <label>Code from Telegram</label>
       <input id="code" data-label="Code from Telegram" class="field mono" maxlength="6" placeholder="------" data-kb="digits">
       <label>Your PIN</label>
@@ -139,6 +140,7 @@
         <input id="admin-arg" data-label="Username" class="field" placeholder="username" autocomplete="off" data-kb="text">
         <button class="btn" data-admin="adduser">Add user</button>
         <button class="btn" data-admin="unlockuser">Unlock</button>
+        <button class="btn" data-admin="resetpin">Reset PIN</button>
         <button class="btn danger" data-admin="removeuser">Remove</button>
       </div>
       <pre id="admin-out" class="admin-out"></pre>

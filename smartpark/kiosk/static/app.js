@@ -7,6 +7,7 @@ const IDLE_MS = 60000;
 
 let current = null;
 let requestId = null;
+let requestRef = "";
 let timerHandle = null;
 let adminToken = null;
 let lastActivity = Date.now();
@@ -123,6 +124,8 @@ const actions = {
     const r = await api("/api/access/request", { username: u });
     if (r.status === "full") return result("warn", "Car park full", "There are no free bays right now. Please try again later.");
     requestId = r.request_id;
+    requestRef = r.ref || "";
+    $("code-ref").textContent = requestRef ? `Use the Telegram message marked Ref ${requestRef}` : "";
     clearInputs("code", "pin");
     setMsg("code-msg", "");
     show("code");
@@ -142,7 +145,7 @@ const actions = {
     if (r.expired) { stopTimer(); return result("warn", "Code expired", "Please start again to get a new code."); }
     clearInputs("pin");
     if (r.attempts_left <= 0) { stopTimer(); return result("bad", "Access denied", "Please start again."); }
-    setMsg("code-msg", `Incorrect code or PIN - ${r.attempts_left} attempt(s) left`);
+    setMsg("code-msg", `Incorrect code or PIN - ${r.attempts_left} attempt(s) left. Check the message says Ref ${requestRef}.`);
   },
 
   async setup() {
