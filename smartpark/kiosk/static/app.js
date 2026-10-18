@@ -64,6 +64,8 @@ function toast(text) {
 
 // ------------------------------------------------------------------ screens
 function show(name) {
+  // wipe masked fields on every screen change - nothing stale or auto-filled can carry over
+  document.querySelectorAll('input[data-secret="1"]').forEach((el) => { el.value = ""; });
   document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
   $("scr-" + name).classList.add("active");
   current = name;
@@ -307,7 +309,7 @@ function renderKb() {
   lbl.textContent = kbTarget.dataset.label || kbTarget.placeholder || "Input";
   const val = document.createElement("span");
   val.className = "kb-value";
-  const isPw = kbTarget.type === "password";
+  const isPw = kbTarget.dataset.secret === "1";
   const v = kbTarget.value;
   val.textContent = v ? (isPw && !reveal ? "•".repeat(v.length) : v) : " ";
   bar.append(lbl, val);
@@ -371,6 +373,7 @@ function key(label, fn, cls = "") {
 
 function type(ch) {
   if (!kbTarget) return;
+  if (kbTarget.dataset.kb === "digits" && !/^[0-9]$/.test(ch)) return;   // PIN / code: digits only
   const max = kbTarget.maxLength > 0 ? kbTarget.maxLength : 64;
   if (kbTarget.value.length >= max) return;
   kbTarget.value += ch;
@@ -408,7 +411,8 @@ document.addEventListener("click", (e) => {
 // stop the OS on-screen keyboard from popping up on the touch display - we draw our own
 document.querySelectorAll("input[data-kb]").forEach((el) => {
   el.setAttribute("inputmode", KB_MODE === "system" ? (el.dataset.kb === "digits" ? "numeric" : "text") : "none");
-  el.setAttribute("autocomplete", "off");
+  el.setAttribute("autocomplete", el.dataset.secret === "1" ? "one-time-code" : "off");
+  el.setAttribute("data-lpignore", "true");
   el.setAttribute("autocorrect", "off");
   el.setAttribute("autocapitalize", "off");
   el.setAttribute("spellcheck", "false");
@@ -417,8 +421,15 @@ document.addEventListener("focusin", (e) => { if (e.target.matches("input[data-k
 // tapping a field again after "Hide" brings the keyboard back
 document.addEventListener("pointerdown", (e) => { if (KB_MODE === "builtin" && e.target.matches("input[data-kb]") && $("kb").classList.contains("hidden")) focusField(e.target); });
 if (KB_MODE === "system") document.body.classList.add("system-kb");
-// keep the preview in sync when a physical keyboard is used
-document.addEventListener("input", (e) => { if (e.target === kbTarget) renderKb(); });
+// digits-only fields: strip anything else (autofill, OS keyboard, paste) + keep the preview in sync
+document.addEventListener("input", (e) => {
+  const el = e.target;
+  if (el.matches && el.matches('input[data-kb="digits"]')) {
+    const clean = el.value.replace(/[^0-9]/g, "").slice(0, 6);
+    if (clean !== el.value) el.value = clean;
+  }
+  if (el === kbTarget) renderKb();
+});
 document.addEventListener("keydown", (e) => {   // physical keyboard still works
   lastActivity = Date.now();
   if (e.key === "Enter" && e.target.matches("input")) { e.preventDefault(); kbTarget = e.target; enter(); }

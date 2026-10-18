@@ -126,3 +126,7 @@ body.kb-open main { padding-bottom: 380px; }
 
 /* OS keyboard mode: leave room at the bottom so the OS keyboard does not cover the form */
 body.system-kb main { padding-bottom: 45vh; }
+
+/* Masked fields are plain text inputs with CSS masking, NOT type=password: browsers' password
+   managers auto-fill password fields (e.g. the admin password into the PIN box). */
+.field.secret { -webkit-text-security: disc; text-security: disc; }

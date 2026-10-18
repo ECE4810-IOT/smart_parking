@@ -25,7 +25,7 @@
     <div class="panel narrow">
       <h1>System locked</h1>
       <p class="muted">Administrator login is required to start SmartPark. The password decrypts the secure vault.</p>
-      <input id="unlock-pw" data-label="Admin password" type="password" class="field" placeholder="Admin password" autocomplete="off" data-kb="text">
+      <input id="unlock-pw" data-label="Admin password" type="text" data-secret="1" class="secret field" placeholder="Admin password" autocomplete="off" data-kb="text">
       <p id="unlock-msg" class="msg"></p>
       <button class="btn primary wide" data-action="unlock">Unlock system</button>
     </div>
@@ -77,7 +77,7 @@
       <label>Code from Telegram</label>
       <input id="code" data-label="Code from Telegram" class="field mono" maxlength="6" placeholder="------" data-kb="digits">
       <label>Your PIN</label>
-      <input id="pin" data-label="Your PIN" class="field mono" type="password" maxlength="6" placeholder="------" data-kb="digits">
+      <input id="pin" data-label="Your PIN" class="secret field mono" type="text" data-secret="1" maxlength="6" placeholder="------" data-kb="digits">
       <p id="code-msg" class="msg"></p>
       <div class="row">
         <button class="btn" data-action="home">Cancel</button>
@@ -103,8 +103,8 @@
       <p class="muted">Use the enrolment code from the admin. Link Telegram first by sending <b>/register &lt;username&gt; &lt;code&gt;</b> to the bot.</p>
       <input id="setup-user" data-label="Username" class="field" placeholder="username" autocomplete="off" data-kb="text">
       <input id="setup-code" data-label="Enrolment code" class="field mono" placeholder="enrolment code" autocomplete="off" data-kb="text">
-      <input id="setup-pin" data-label="New PIN" class="field mono" type="password" maxlength="6" placeholder="choose 6-digit PIN" data-kb="digits">
-      <input id="setup-pin2" data-label="Repeat PIN" class="field mono" type="password" maxlength="6" placeholder="repeat PIN" data-kb="digits">
+      <input id="setup-pin" data-label="New PIN" class="secret field mono" type="text" data-secret="1" maxlength="6" placeholder="choose 6-digit PIN" data-kb="digits">
+      <input id="setup-pin2" data-label="Repeat PIN" class="secret field mono" type="text" data-secret="1" maxlength="6" placeholder="repeat PIN" data-kb="digits">
       <p id="setup-msg" class="msg"></p>
       <div class="row">
         <button class="btn" data-action="home">Cancel</button>
@@ -117,7 +117,7 @@
   <section id="scr-admin-login" class="screen">
     <div class="panel narrow">
       <h1>Administrator</h1>
-      <input id="admin-pw" data-label="Admin password" type="password" class="field" placeholder="Admin password" autocomplete="off" data-kb="text">
+      <input id="admin-pw" data-label="Admin password" type="text" data-secret="1" class="secret field" placeholder="Admin password" autocomplete="off" data-kb="text">
       <p id="admin-login-msg" class="msg"></p>
       <div class="row">
         <button class="btn" data-action="home">Cancel</button>

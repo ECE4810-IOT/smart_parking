@@ -291,7 +291,10 @@ class AccessManager:
             # (mistyped, decoded by hand, an old message, or the two fields swapped).
             code_ok = bool(req.cipher_mac) and const_eq(hmac_sha256(self._mac_key, b"c:" + code.encode()),
                                                         req.cipher_mac)
-            reason = "bad_pin" if code_ok else ("bad_code" if req.username else "no_such_request")
+            if code_ok and not (pin.isdigit() and len(pin) == 6):
+                reason = "pin_not_6_digits"      # e.g. browser auto-filled the PIN box
+            else:
+                reason = "bad_pin" if code_ok else ("bad_code" if req.username else "no_such_request")
             return VerifyOutcome(False, username=req.username, attempts_left=left, locked=locked, reason=reason)
 
     def pending_request(self, request_id: str) -> AccessRequest | None:

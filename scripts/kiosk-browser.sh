@@ -11,4 +11,5 @@ if grep -Eq '^\s*keyboard\s*=\s*"system"' "$CFG" 2>/dev/null; then
 fi
 # shellcheck disable=SC2086
 exec "$BROWSER" $EXTRA --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble \
-  --disable-pinch --overscroll-history-navigation=0 --incognito --check-for-update-interval=31536000 "$URL"
+  --disable-pinch --overscroll-history-navigation=0 --incognito --password-store=basic --disable-features=PasswordManagerOnboarding,AutofillServerCommunication \
+  --check-for-update-interval=31536000 "$URL"
