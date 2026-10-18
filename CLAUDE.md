@@ -1,6 +1,7 @@
 # SmartPark - handoff notes for Claude Code
 
-Context for a Claude session running on the Raspberry Pis. Read README.md for full setup/usage.
+Context for a Claude session running on the Raspberry Pis. Read `context.md` for the background, design
+rationale and history, and README.md for full setup/usage.
 
 ## Project
 ECE4810 (Monash) IoT project, due 21 Oct 2026. Secure multi-node smart parking system:
