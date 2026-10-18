@@ -10,6 +10,7 @@
   benchmark      measure ML inference cost on this device
   synth          generate a SYNTHETIC dataset (pipeline testing only)
   bench-crypto   measure the cost of every cryptographic operation
+  sensor-test    read the ultrasonic sensor and diagnose wiring problems (stop the bay service first)
 """
 
 from __future__ import annotations
@@ -73,6 +74,10 @@ def main(argv=None):
 
     sub.add_parser("bench-crypto")
 
+    s = sub.add_parser("sensor-test")
+    s.add_argument("--config", required=True)
+    s.add_argument("--n", type=int, default=40)
+
     a = p.parse_args(argv)
     from .util import init_metrics, setup_logging
 
@@ -93,6 +98,11 @@ def main(argv=None):
             return write_dataset(a.out, a.per_class)
         from .security.bench import bench_crypto
         return bench_crypto()
+
+    if a.cmd == "sensor-test":
+        from .config import load_config
+        from .hardware.diagnose import sensor_test
+        return sensor_test(load_config(a.config, "bay"), a.n)
 
     from .config import load_config
     role = "gateway" if a.cmd in ("init-gateway", "gateway") else ("bay" if a.cmd in ("init-bay", "bay") else None)

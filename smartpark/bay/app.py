@@ -31,7 +31,8 @@ from ..security.tickets import TicketError, verify_ticket
 from ..util import metric
 
 log = logging.getLogger(__name__)
-FAULT_AFTER = 10  # consecutive failed readings before declaring a sensor fault
+FAULT_AFTER = 10    # consecutive failed readings before declaring a sensor fault
+RECOVER_AFTER = 5   # consecutive good readings before declaring it recovered (no flapping)
 
 
 class BayNode:
@@ -56,11 +57,13 @@ class BayNode:
         self.unauthorised = False
         self.fault = False
         self._fail_streak = 0
+        self._ok_streak = 0
         self.mode = "idle"
         self.rate_hz = 0.0
         self.started = time.time()
         self._pending: deque = deque(maxlen=200)  # events waiting for the gateway
         self._flush_lock = threading.Lock()
+        self._hs_failures = 0
         self._stop = threading.Event()
         self.record_label = cfg["ml"].get("record_label") or ""
         self.server = JsonServer(cfg["network"]["listen_host"], cfg["network"]["listen_port"],
@@ -119,18 +122,21 @@ class BayNode:
     def _update_health(self, d):
         if d is None:
             self._fail_streak += 1
+            self._ok_streak = 0
             if self._fail_streak >= FAULT_AFTER and not self.fault:
                 self.fault = True
                 log.warning("Sensor fault: %d consecutive failed readings", self._fail_streak)
                 self._send_event({"kind": "fault", "detail": f"{self._fail_streak} failed readings"})
                 self._refresh_lights()
         else:
-            if self.fault:
+            self._ok_streak += 1
+            if self.fault and self._ok_streak >= RECOVER_AFTER:
                 self.fault = False
                 log.info("Sensor recovered")
                 self._send_event({"kind": "recovered"})
                 self._refresh_lights()
-            self._fail_streak = 0
+            if self._ok_streak >= RECOVER_AFTER or not self.fault:
+                self._fail_streak = 0
 
     # ================================================================ events
     def _assignment_valid(self) -> bool:
@@ -217,14 +223,26 @@ class BayNode:
             ini = HandshakeInitiator(self.identity, "gateway", self.skew)
             status, resp = post_json(self.cfg["gateway"], "/handshake", ini.hello(), timeout=8)
             if status != 200:
-                log.warning("Handshake rejected by gateway: %s", resp.get("error"))
+                self._hs_failed(f"rejected by gateway: {resp.get('error')}")
                 return False
             self.session = ini.finish(resp)
-            log.info("Secure session established with gateway (sid %s...)", self.session.sid[:6])
+            log.info("Secure session established with gateway (sid %s...)%s", self.session.sid[:6],
+                     f" after {self._hs_failures} failed attempt(s)" if self._hs_failures else "")
+            self._hs_failures = 0
             return True
-        except (ConnectionError, ChannelError, KeyError) as e:
-            log.warning("Handshake failed: %s", e)
+        except ConnectionError as e:
+            reason = "gateway not listening yet (is it unlocked on the kiosk?)" if "refused" in str(e) else str(e)
+            self._hs_failed(reason)
             return False
+        except (ChannelError, KeyError) as e:
+            self._hs_failed(str(e))
+            return False
+
+    def _hs_failed(self, reason: str):
+        """Log the first failure and then once a minute, not every retry."""
+        self._hs_failures += 1
+        if self._hs_failures == 1 or self._hs_failures % 6 == 0:
+            log.warning("Handshake failed (%d attempt(s)): %s", self._hs_failures, reason)
 
     def _send(self, obj: dict) -> dict | None:
         with self._session_lock:
@@ -252,6 +270,12 @@ class BayNode:
 
     def _send_event(self, payload: dict):
         payload.setdefault("ts", time.time())
+        # a fault that recovered before the gateway even heard about it is not worth sending
+        if payload.get("kind") in ("fault", "recovered") and self._pending:
+            prev = self._pending[-1].get("kind")
+            if {prev, payload["kind"]} == {"fault", "recovered"} and not self._flush_lock.locked():
+                self._pending.pop()
+                return
         self._pending.append(payload)
         threading.Thread(target=self._flush_pending, daemon=True).start()
 

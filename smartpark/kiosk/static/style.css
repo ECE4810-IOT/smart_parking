@@ -89,17 +89,26 @@ label { display: block; color: var(--muted); margin: 10px 0 4px; font-size: 15px
 .kb { position: fixed; left: 0; right: 0; bottom: 0; background: #0b1220; border-top: 1px solid var(--line);
   padding: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
 .kb .kr { display: flex; gap: 8px; justify-content: center; }
-.kb button { font: inherit; font-size: 22px; min-width: 64px; height: 56px; border-radius: 10px; border: 1px solid var(--line);
-  background: var(--panel-2); color: var(--text); flex: 0 1 80px; }
-.kb button.wide { flex: 0 1 180px; } .kb button.go { background: var(--accent); }
-.kb.digits button { flex: 0 1 140px; height: 62px; }
-body.kb-open main { padding-bottom: 300px; }
+.kb button { font: inherit; font-size: 22px; min-width: 0; height: 56px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel-2); color: var(--text); flex: 1 1 0; max-width: 84px; padding: 0; }
+.kb button.wide { flex: 2 1 0; max-width: 160px; } .kb button.go { background: var(--accent); }
+.kb button.space { flex: 5 1 0; max-width: none; }
+.kb button.active { background: var(--accent); border-color: var(--accent-2); }
+.kb button.mini, .kb.digits button.mini { flex: 0 0 auto; max-width: none; height: 40px; font-size: 16px; padding: 0 14px; }
+.kb-preview { display: flex; align-items: center; gap: 10px; padding: 4px 6px 6px; border-bottom: 1px solid var(--line); }
+.kb-label { color: var(--muted); font-size: 15px; white-space: nowrap; }
+.kb-value { flex: 1; font-size: 24px; font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 2px;
+  background: var(--panel-2); border-radius: 8px; padding: 4px 10px; min-height: 40px; overflow: hidden;
+  white-space: nowrap; }
+.kb.digits button { max-width: 140px; height: 62px; }
+.kb.digits button.wide { flex: 1 1 0; }
+body.kb-open main { padding-bottom: 380px; }
 /* landscape: dock the numeric keypad on the right so the form stays visible */
 @media (orientation: landscape) {
   .kb.digits { left: auto; top: 64px; width: 400px; border-top: none; border-left: 1px solid var(--line);
     justify-content: center; padding: 16px; }
   .kb.digits .kr { gap: 10px; }
-  .kb.digits button { flex: 1 1 100px; height: 84px; font-size: 28px; }
+  .kb.digits button { max-width: none; height: 84px; font-size: 28px; }
   body.kb-open.kb-digits main { padding-bottom: 20px; padding-right: 420px; }
 }
 

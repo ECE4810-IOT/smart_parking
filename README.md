@@ -163,7 +163,7 @@ Everything is encrypted into `~/smartpark_data/vault.json`, and the gateway's RS
 Run this from the gateway (needs SSH to the bays):
 
 ```bash
-bash scripts/exchange_keys.sh pi@bay1 pi@bay2 pi@bay3 pi@bay4
+bash scripts/exchange_keys.sh user@leanjieberrypi user@chloeberrypi user@damienberrypi user@<4th-bay-pi>   # real hostnames, not bay1..bay4
 ```
 
 To do it by hand instead:
@@ -332,6 +332,10 @@ Other sources:
 Standard cryptography comes from `cryptography`, `hashlib`, `hmac` and `secrets`. The only hand-written cipher is the digit-wise Vigenère OTP layer (Lecture 8c).
 
 ## Troubleshooting
+
+- **Bay log shows "gateway not listening yet" / connection refused:** expected while the gateway is **locked**. Its port only opens after the admin logs in on the kiosk. The bay retries every 10 s and connects within seconds of the login.
+- **"Sensor fault" alerts:** stop the bay service and run `python -m smartpark sensor-test --config config/bay.toml`. It prints 40 readings and says *why* pings fail: no echo (wiring/power), echo too long (nothing in range, or a soft/angled target), echo stuck high (clone module or divider). Fault alerts are limited to one per bay per 10 minutes.
+- **The OS keyboard pops up over the kiosk:** the kiosk has its own keyboard and tells the browser not to show one. If Raspberry Pi OS still shows its keyboard, turn it off in Raspberry Pi Configuration → Display → On-screen keyboard (or `sudo raspi-config` → Display Options).
 
 - **Bays never connect / "stale hello":** the clocks are out of sync. The handshake rejects anything more than 60 s off, and the Pi 4 has no real-time clock. Check `timedatectl`. If campus Wi-Fi blocks the time server, use the phone hotspot.
 - **"unknown device" in the gateway log:** that bay's public key isn't trusted. Re-run the key exchange.

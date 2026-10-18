@@ -62,8 +62,10 @@ class TelegramClient:
         self.stats = {"sent": 0, "failed": 0, "coalesced": 0, "queued_offline": 0}
 
     # ------------------------------------------------------------------ API
-    def _call(self, method: str, timeout: float = 10, **params) -> dict:
-        r = self._session.post(API.format(token=self.token, method=method), json=params, timeout=timeout)
+    def _call(self, method: str, http_timeout: float = 10, **params) -> dict:
+        # NB: `http_timeout` is the HTTP request timeout; `timeout` (if present in params) is
+        # Telegram's long-poll timeout for getUpdates - they must not share a name.
+        r = self._session.post(API.format(token=self.token, method=method), json=params, timeout=http_timeout)
         data = r.json()
         if r.status_code == 429:
             raise _RateLimited(data.get("parameters", {}).get("retry_after", 2))
@@ -191,7 +193,7 @@ class TelegramClient:
                 params = {"timeout": self.poll_timeout, "allowed_updates": ["message", "callback_query"]}
                 if self._offset is not None:
                     params["offset"] = self._offset
-                data = self._call("getUpdates", timeout=self.poll_timeout + 10, **params)
+                data = self._call("getUpdates", http_timeout=self.poll_timeout + 10, **params)
                 self.online = True
                 for upd in data.get("result", []):
                     self._offset = upd["update_id"] + 1
@@ -213,7 +215,7 @@ class TelegramClient:
     def _skip_stale(self):
         """Ignore commands sent while the system was offline (no replay on restart)."""
         try:
-            data = self._call("getUpdates", timeout=15)
+            data = self._call("getUpdates", http_timeout=15)
             if data.get("result"):
                 self._offset = data["result"][-1]["update_id"] + 1
                 log.info("Skipped %d stale Telegram update(s)", len(data["result"]))

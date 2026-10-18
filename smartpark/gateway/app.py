@@ -92,6 +92,7 @@ class Gateway:
         self._otp_msgs: dict[str, tuple[str, int]] = {}
         self._unknown_attempts: deque = deque()
         self._full_alerted = False
+        self._fault_state: dict[str, dict] = {}
         self._last_rate_alert = 0.0
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -240,11 +241,8 @@ class Gateway:
         kind = ev.get("kind")
         bay = node.id
         name = label(bay)
-        if kind == "fault":
-            self.alert(f"{name}: sensor fault ({ev.get('detail', '')}) - check wiring")
-            return
-        if kind == "recovered":
-            self.alert(f"{name}: sensor recovered", urgent=False)
+        if kind in ("fault", "recovered"):
+            self._sensor_health_event(bay, kind, ev)
             return
         self.store.add_event(bay, ev)
         conf = ev.get("confidence", 0)
@@ -288,6 +286,28 @@ class Gateway:
         else:
             self.feed(f"{name}: {KIND_TEXT.get(kind, kind)} ignored", "info")
         self._check_capacity()
+
+    def _sensor_health_event(self, bay: str, kind: str, ev: dict):
+        """Fault alerts are rate-limited per bay (max one Telegram alert per 10 min, and a
+        'recovered' message only if the fault alert was actually sent), so a flaky sensor or a
+        backlog of queued events cannot flood Telegram."""
+        name = label(bay)
+        now = time.time()
+        st = self._fault_state.setdefault(bay, {"last_alert": 0.0, "alerted": False, "suppressed": 0})
+        if kind == "fault":
+            if now - st["last_alert"] >= 600:
+                extra = f", {st['suppressed']} more since last alert" if st["suppressed"] else ""
+                self.alert(f"{name}: sensor fault ({ev.get('detail', '')}{extra}) - check wiring")
+                st.update(last_alert=now, alerted=True, suppressed=0)
+            else:
+                st["suppressed"] += 1
+                self.feed(f"{name}: sensor fault (repeat)", "warn")
+        else:
+            if st["alerted"]:
+                self.alert(f"{name}: sensor recovered", urgent=False)
+                st["alerted"] = False
+            else:
+                self.feed(f"{name}: sensor recovered", "info")
 
     # ================================================================ capacity / bays
     def bay_status(self, bay_id: str) -> str:

@@ -55,7 +55,7 @@ BAY_DEFAULTS = {
     "sensor": {
         "trigger_pin": 7,
         "echo_pin": 11,
-        "echo_timeout_s": 0.03,
+        "echo_timeout_s": 0.04,
         "temperature_c": 25.0,
         "min_cm": 2.0,
         "max_cm": 400.0,

@@ -15,7 +15,7 @@ listen_port = 8765
 [sensor]                      # BOARD pin numbering, same wiring as Lab 1
 trigger_pin = 7
 echo_pin = 11                 # through the 1k/2k voltage divider!
-echo_timeout_s = 0.03
+echo_timeout_s = 0.04          # HC-SR04 holds echo ~38 ms when nothing is in range
 temperature_c = 28.0          # speed-of-sound compensation
 min_cm = 2.0
 max_cm = 400.0

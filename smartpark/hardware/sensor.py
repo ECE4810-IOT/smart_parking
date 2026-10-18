@@ -42,6 +42,8 @@ class UltrasonicSensor:
         self.gpio.output(self.trig, self.gpio.LOW)
         self.timeouts = 0
         self.readings = 0
+        # why pings fail - printed by `python -m smartpark sensor-test` for wiring diagnosis
+        self.fail_reasons = {"echo_stuck_high": 0, "no_echo_start": 0, "echo_too_long": 0, "out_of_range": 0}
 
     def set_temperature(self, celsius: float) -> None:
         speed_m_s = 331.3 + 0.606 * celsius
@@ -53,6 +55,15 @@ class UltrasonicSensor:
         if wait > 0:
             time.sleep(wait)
         g = self.gpio
+        # Some HC-SR04 clones keep ECHO high for up to ~200 ms after a missed echo. Triggering
+        # again while it is still high would measure garbage, so wait for it to drop first.
+        t_wait = time.perf_counter()
+        while g.input(self.echo) == 1:
+            if time.perf_counter() - t_wait > 0.25:
+                self.timeouts += 1
+                self.fail_reasons["echo_stuck_high"] += 1
+                return None
+            time.sleep(0.001)
         g.output(self.trig, g.HIGH)
         time.sleep(0.00001)
         g.output(self.trig, g.LOW)
@@ -64,15 +75,18 @@ class UltrasonicSensor:
             pulse_start = time.perf_counter()
             if pulse_start - start > self.timeout:
                 self.timeouts += 1
+                self.fail_reasons["no_echo_start"] += 1   # wiring: TRIG/ECHO/VCC/GND or divider
                 return None
         pulse_end = pulse_start
         while g.input(self.echo) == 1:
             pulse_end = time.perf_counter()
             if pulse_end - pulse_start > self.timeout:
                 self.timeouts += 1
+                self.fail_reasons["echo_too_long"] += 1   # nothing in range / soft or angled target
                 return None
         d = (pulse_end - pulse_start) * self._half_speed_cm_s
         if not (self.min_cm <= d <= self.max_cm):
+            self.fail_reasons["out_of_range"] += 1
             return None
         return d
 

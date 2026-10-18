@@ -208,55 +208,117 @@ function startTimer(seconds) {
 function stopTimer() { if (timerHandle) clearInterval(timerHandle); timerHandle = null; }
 
 // ------------------------------------------------------------------ on-screen keyboard
+// Built-in keyboard so the OS keyboard is never needed on the touch display.
+// - preview bar shows what you are typing (password fields masked, with a Show toggle)
+// - Shift = one capital letter, double-tap Shift = caps lock (highlighted when active)
+// - ?123 switches to digits + symbols (admin passwords can contain symbols)
+// - Hide minimises the keyboard; tap any field to bring it back
 let kbTarget = null;
-const ROWS_TEXT = ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm_"];
-const ROWS_DIGITS = ["123", "456", "789"];
+let kbLayer = "letters";      // letters | symbols | digits
+let shift = "off";            // off | once | lock
+let lastShiftTap = 0;
+let reveal = false;
+const LETTERS = ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm"];
+const SYMBOLS = ["1234567890", "!@#$%^&*()", "-_=+.,:;/?", "'\"<>[]{}~|\\"];
+const DIGITS = ["123", "456", "789"];
 
 function focusField(input) {
   kbTarget = input;
-  input.focus();
-  buildKb(input.dataset.kb || "text");
+  reveal = false;
+  kbLayer = input.dataset.kb === "digits" ? "digits" : "letters";
+  shift = "off";
+  input.focus({ preventScroll: true });
+  renderKb();
   setTimeout(() => input.scrollIntoView({ block: "center", behavior: "smooth" }), 30);
 }
 
-function buildKb(mode) {
+function renderKb() {
   const kb = $("kb");
+  if (!kbTarget) return hideKb();
   kb.innerHTML = "";
-  kb.className = "kb " + mode;
-  const rows = mode === "digits" ? ROWS_DIGITS : ROWS_TEXT;
+  kb.className = "kb " + (kbLayer === "digits" ? "digits" : "text");
+
+  // preview bar: field name + what has been typed
+  const bar = document.createElement("div");
+  bar.className = "kb-preview";
+  const lbl = document.createElement("span");
+  lbl.className = "kb-label";
+  lbl.textContent = kbTarget.dataset.label || kbTarget.placeholder || "Input";
+  const val = document.createElement("span");
+  val.className = "kb-value";
+  const isPw = kbTarget.type === "password";
+  const v = kbTarget.value;
+  val.textContent = v ? (isPw && !reveal ? "•".repeat(v.length) : v) : " ";
+  bar.append(lbl, val);
+  if (isPw) bar.appendChild(key(reveal ? "Mask" : "Show", () => { reveal = !reveal; renderKb(); }, "mini"));
+  bar.appendChild(key("Hide ▾", hideKb, "mini"));
+  kb.appendChild(bar);
+  requestAnimationFrame(() => { val.scrollLeft = val.scrollWidth; });   // always show the end of the text
+
+  const rows = kbLayer === "digits" ? DIGITS : kbLayer === "symbols" ? SYMBOLS : LETTERS;
+  const caps = shift !== "off";
   rows.forEach((r) => {
     const row = document.createElement("div");
     row.className = "kr";
-    [...r].forEach((ch) => row.appendChild(key(ch, () => type(ch))));
+    [...r].forEach((ch) => {
+      const shown = caps && /[a-z]/.test(ch) ? ch.toUpperCase() : ch;
+      row.appendChild(key(shown, () => type(shown)));
+    });
     kb.appendChild(row);
   });
+
   const last = document.createElement("div");
   last.className = "kr";
-  last.appendChild(key("⌫", backspace, "wide"));
-  if (mode === "digits") last.appendChild(key("0", () => type("0")));
-  if (mode === "text") last.appendChild(key("ABC", toggleCase, "wide"));
+  if (kbLayer === "digits") {
+    last.appendChild(key("⌫", backspace, "wide"));
+    last.appendChild(key("0", () => type("0")));
+  } else {
+    if (kbLayer === "letters") {
+      last.appendChild(key(shift === "lock" ? "CAPS" : "⇧ Shift", onShift,
+        "wide" + (shift !== "off" ? " active" : "")));
+    }
+    last.appendChild(key(kbLayer === "letters" ? "?123" : "ABC",
+      () => { kbLayer = kbLayer === "letters" ? "symbols" : "letters"; renderKb(); }, "wide"));
+    last.appendChild(key("_", () => type("_")));
+    last.appendChild(key("space", () => type(" "), "space"));
+    last.appendChild(key("⌫", backspace, "wide"));
+  }
   last.appendChild(key("Done", enter, "wide go"));
   kb.appendChild(last);
+  kb.classList.remove("hidden");
   document.body.classList.add("kb-open");
-  document.body.classList.toggle("kb-digits", mode === "digits");
+  document.body.classList.toggle("kb-digits", kbLayer === "digits");
 }
 
-let upper = false;
-function toggleCase() { upper = !upper; }
+function onShift() {
+  const now = Date.now();
+  if (shift === "lock") shift = "off";
+  else if (now - lastShiftTap < 400) shift = "lock";   // double tap = caps lock
+  else shift = shift === "once" ? "off" : "once";
+  lastShiftTap = now;
+  renderKb();
+}
+
 function key(label, fn, cls = "") {
   const b = document.createElement("button");
+  b.type = "button";
   b.textContent = label;
   b.className = cls;
-  b.addEventListener("pointerdown", (e) => { e.preventDefault(); fn(); lastActivity = Date.now(); });
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); lastActivity = Date.now(); });
   return b;
 }
+
 function type(ch) {
   if (!kbTarget) return;
   const max = kbTarget.maxLength > 0 ? kbTarget.maxLength : 64;
   if (kbTarget.value.length >= max) return;
-  kbTarget.value += upper && /[a-z]/.test(ch) ? ch.toUpperCase() : ch;
+  kbTarget.value += ch;
+  if (shift === "once") shift = "off";
+  renderKb();
 }
-function backspace() { if (kbTarget) kbTarget.value = kbTarget.value.slice(0, -1); }
+
+function backspace() { if (kbTarget) { kbTarget.value = kbTarget.value.slice(0, -1); renderKb(); } }
+
 function enter() {
   if (!kbTarget) return hideKb();
   const inputs = [...$("scr-" + current).querySelectorAll("input")];
@@ -266,7 +328,13 @@ function enter() {
   const primary = $("scr-" + current).querySelector(".btn.primary");
   if (primary) primary.click();
 }
-function hideKb() { $("kb").classList.add("hidden"); document.body.classList.remove("kb-open", "kb-digits"); kbTarget = null; }
+
+function hideKb() {
+  $("kb").classList.add("hidden");
+  document.body.classList.remove("kb-open", "kb-digits");
+  if (kbTarget) kbTarget.blur();
+  kbTarget = null;
+}
 
 // ------------------------------------------------------------------ wiring
 document.addEventListener("click", (e) => {
@@ -276,7 +344,19 @@ document.addEventListener("click", (e) => {
   const ad = e.target.closest("[data-admin]");
   if (ad) return adminAction(ad.dataset.admin);
 });
+// stop the OS on-screen keyboard from popping up on the touch display - we draw our own
+document.querySelectorAll("input[data-kb]").forEach((el) => {
+  el.setAttribute("inputmode", "none");
+  el.setAttribute("autocomplete", "off");
+  el.setAttribute("autocorrect", "off");
+  el.setAttribute("autocapitalize", "off");
+  el.setAttribute("spellcheck", "false");
+});
 document.addEventListener("focusin", (e) => { if (e.target.matches("input[data-kb]") && e.target !== kbTarget) focusField(e.target); });
+// tapping a field again after "Hide" brings the keyboard back
+document.addEventListener("pointerdown", (e) => { if (e.target.matches("input[data-kb]") && $("kb").classList.contains("hidden")) focusField(e.target); });
+// keep the preview in sync when a physical keyboard is used
+document.addEventListener("input", (e) => { if (e.target === kbTarget) renderKb(); });
 document.addEventListener("keydown", (e) => {   // physical keyboard still works
   lastActivity = Date.now();
   if (e.key === "Enter" && e.target.matches("input")) { e.preventDefault(); kbTarget = e.target; enter(); }

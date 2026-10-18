@@ -78,3 +78,14 @@ def test_permit_survives_bay_reboot(sim):
     sim.start_bay(i)
     assert wait_for(lambda: sim.bays[i].assignment is not None, 15)
     assert sim.bays[i].assignment["user"] == "bob"
+
+
+def test_flaky_sensor_does_not_flood_telegram(sim):
+    before = sum("sensor fault" in m["text"] for m in sim.tg.sent)
+    for _ in range(4):                      # fault / recover cycles
+        sim.sensors[2].set_fault(True)
+        time.sleep(1.6)
+        sim.sensors[2].set_fault(False)
+        time.sleep(1.2)
+    after = sum("sensor fault" in m["text"] for m in sim.tg.sent)
+    assert after - before <= 1
