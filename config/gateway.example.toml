@@ -22,6 +22,7 @@ bay4 = "bay4:8765"
 enabled = true
 host = "127.0.0.1"   # local only - the touch display's browser runs on this Pi
 port = 8080
+keyboard = "builtin"   # or "system" to use the Raspberry Pi OS on-screen keyboard (wvkbd) instead
 
 [telegram]
 enabled = true

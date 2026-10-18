@@ -119,3 +119,10 @@ body.kb-open main { padding-bottom: 380px; }
 }
 
 .ref-hint { margin: 2px 0 6px; font-size: 18px; color: var(--amber); font-weight: 600; }
+
+#toast { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); background: var(--red); color: #fff;
+  padding: 12px 20px; border-radius: 12px; font-size: 18px; opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 20; }
+#toast.show { opacity: 1; }
+
+/* OS keyboard mode: leave room at the bottom so the OS keyboard does not cover the form */
+body.system-kb main { padding-bottom: 45vh; }

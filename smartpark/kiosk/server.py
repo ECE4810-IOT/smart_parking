@@ -25,9 +25,11 @@ ADMIN_SESSION_S = 300
 
 
 class KioskServer:
-    def __init__(self, launcher, host: str = "127.0.0.1", port: int = 8080):
+    def __init__(self, launcher, host: str = "127.0.0.1", port: int = 8080, keyboard: str = "builtin"):
         self.launcher = launcher
+        self.keyboard = "system" if keyboard == "system" else "builtin"
         self.token = secrets.token_urlsafe(24)
+        self.boot_id = secrets.token_hex(6)   # public; lets an old page notice the server restarted
         self._admin_tokens: dict[str, float] = {}
         self._admin_fail: list[float] = []
         self._lock = threading.Lock()
@@ -57,7 +59,8 @@ class KioskServer:
             def do_GET(self):  # noqa: N802
                 path = self.path.split("?")[0]
                 if path in ("/", "/index.html"):
-                    html = (STATIC / "index.html").read_text().replace("{{TOKEN}}", srv.token)
+                    html = (STATIC / "index.html").read_text().replace("{{TOKEN}}", srv.token) \
+                        .replace("{{KEYBOARD}}", srv.keyboard)
                     return self._send(200, html.encode(), "text/html; charset=utf-8")
                 if path == "/api/state":
                     return self._json(200, srv.state())
@@ -70,6 +73,8 @@ class KioskServer:
 
             def do_POST(self):  # noqa: N802
                 if not secrets.compare_digest(self.headers.get("X-Kiosk-Token", ""), srv.token):
+                    log.warning("Kiosk POST %s rejected: stale/missing token (page loaded before a restart?)",
+                                self.path)
                     return self._json(403, {"error": "bad_token"})
                 try:
                     length = min(int(self.headers.get("Content-Length", 0)), 16384)
@@ -95,8 +100,8 @@ class KioskServer:
     # ------------------------------------------------------------------
     def state(self) -> dict:
         if self.launcher.locked:
-            return {"locked": True, **self.launcher.guard.status()}
-        return self.launcher.gateway.kiosk_state()
+            return {"locked": True, "boot": self.boot_id, **self.launcher.guard.status()}
+        return {**self.launcher.gateway.kiosk_state(), "boot": self.boot_id}
 
     def _admin_ok(self, token: str) -> bool:
         exp = self._admin_tokens.get(token or "")

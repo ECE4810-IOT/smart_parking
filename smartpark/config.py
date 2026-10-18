@@ -25,7 +25,8 @@ GATEWAY_DEFAULTS = {
     "network": {"listen_host": "0.0.0.0", "listen_port": 8765},
     # bay_id -> "host:port" (LAN IP, hostname.local or Tailscale name/IP)
     "bays": {},
-    "kiosk": {"enabled": True, "host": "127.0.0.1", "port": 8080},
+    # keyboard: "builtin" (kiosk draws its own) or "system" (use the OS keyboard, e.g. wvkbd/squeekboard)
+    "kiosk": {"enabled": True, "host": "127.0.0.1", "port": 8080, "keyboard": "builtin"},
     "telegram": {"enabled": True, "poll_timeout_s": 25, "coalesce_window_s": 3.0},
     "thingspeak": {"enabled": True, "interval_s": 20},
     "access": {

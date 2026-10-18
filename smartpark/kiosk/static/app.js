@@ -2,6 +2,8 @@
 "use strict";
 
 const TOKEN = document.querySelector('meta[name="kiosk-token"]').content;
+// "builtin" = our own keyboard; "system" = let the OS on-screen keyboard (wvkbd) handle typing
+const KB_MODE = (document.querySelector('meta[name="kiosk-keyboard"]') || {}).content === "system" ? "system" : "builtin";
 const $ = (id) => document.getElementById(id);
 const IDLE_MS = 60000;
 
@@ -14,14 +16,50 @@ let lastActivity = Date.now();
 let lastState = null;
 
 // ------------------------------------------------------------------ API
+let bootId = null;
+
 async function api(path, body) {
   const opts = body === undefined ? {} : {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Kiosk-Token": TOKEN },
     body: JSON.stringify(body),
   };
-  const r = await fetch(path, opts);
-  return r.json();
+  let r;
+  try {
+    r = await fetch(path, opts);
+  } catch (e) {
+    throw new Error("Cannot reach the SmartPark gateway - is it running?");
+  }
+  let data = {};
+  try { data = await r.json(); } catch (e) { /* non-JSON error page */ }
+  if (r.status === 403 && data.error === "bad_token") {
+    // the gateway restarted since this page loaded -> its security token changed
+    location.reload();
+    throw new Error("Gateway restarted - reloading the kiosk...");
+  }
+  if (r.status === 423) { await poll(); throw new Error("System is locked - log in as admin first"); }
+  if (!r.ok) throw new Error(data.error ? `Gateway error: ${data.error}` : `Gateway error (HTTP ${r.status})`);
+  return data;
+}
+
+// run an action and ALWAYS show a visible message if anything fails (never fail silently)
+async function guarded(msgId, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    console.error(e);
+    if (msgId && $(msgId)) setMsg(msgId, e.message || String(e));
+    else toast(e.message || String(e));
+  }
+}
+
+function toast(text) {
+  let t = $("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; document.body.appendChild(t); }
+  t.textContent = text;
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), 5000);
 }
 
 // ------------------------------------------------------------------ screens
@@ -98,29 +136,34 @@ function pill(id, text, cls, visible) {
 }
 
 async function poll() {
-  try { renderState(await api("/api/state")); }
-  catch (e) { pill("pill-net", "Kiosk server unreachable", "bad", true); }
+  try {
+    const st = await api("/api/state");
+    if (bootId && st.boot && st.boot !== bootId) { location.reload(); return; }   // server restarted
+    bootId = st.boot || bootId;
+    renderState(st);
+  } catch (e) { pill("pill-net", "Kiosk server unreachable", "bad", true); }
 }
 
 // ------------------------------------------------------------------ actions
 const actions = {
-  async unlock() {
+  unlock: () => guarded("unlock-msg", async () => {
     const pw = $("unlock-pw").value;
-    if (!pw) return;
+    if (!pw) return setMsg("unlock-msg", "Enter the admin password");
     setMsg("unlock-msg", "Decrypting vault...", true);
     const r = await api("/api/unlock", { password: pw });
     $("unlock-pw").value = "";
-    setMsg("unlock-msg", r.ok ? "" : r.message, r.ok);
+    setMsg("unlock-msg", r.ok ? "" : (r.message || "Login failed"), r.ok);
     if (r.ok) { await poll(); show("home"); }
-  },
+  }),
   home: goHome,
   "go-username": () => { clearInputs("username"); show("username"); },
   "go-setup": () => show("setup"),
   "go-admin-login": () => show("admin-login"),
 
-  async request() {
+  request: () => guarded("username-msg", async () => {
     const u = $("username").value.trim();
-    if (u.length < 3) return;
+    if (u.length < 3) return setMsg("username-msg", "Enter your username (at least 3 characters)");
+    setMsg("username-msg", "");
     const r = await api("/api/access/request", { username: u });
     if (r.status === "full") return result("warn", "Car park full", "There are no free bays right now. Please try again later.");
     requestId = r.request_id;
@@ -130,9 +173,9 @@ const actions = {
     setMsg("code-msg", "");
     show("code");
     startTimer(r.expires_in || 60);
-  },
+  }),
 
-  async verify() {
+  verify: () => guarded("code-msg", async () => {
     const code = $("code").value.trim(), pin = $("pin").value.trim();
     if (code.length !== 6 || pin.length !== 6) return setMsg("code-msg", "Code and PIN must both be 6 digits");
     const r = await api("/api/access/verify", { request_id: requestId, code, pin });
@@ -146,32 +189,42 @@ const actions = {
     clearInputs("pin");
     if (r.attempts_left <= 0) { stopTimer(); return result("bad", "Access denied", "Please start again."); }
     setMsg("code-msg", `Incorrect code or PIN - ${r.attempts_left} attempt(s) left. Check the message says Ref ${requestRef}.`);
-  },
+  }),
 
-  async setup() {
+  setup: () => guarded("setup-msg", async () => {
     const u = $("setup-user").value.trim(), c = $("setup-code").value.trim();
     const p1 = $("setup-pin").value.trim(), p2 = $("setup-pin2").value.trim();
+    if (!u || !c) return setMsg("setup-msg", "Enter your username and the enrolment code");
+    if (p1.length !== 6) return setMsg("setup-msg", "The PIN must be 6 digits");
     if (p1 !== p2) return setMsg("setup-msg", "PINs do not match");
+    setMsg("setup-msg", "Saving...", true);
     const r = await api("/api/setup", { username: u, code: c, pin: p1 });
     if (r.ok) return result("ok", "Setup complete", "You can now unlock a bay with your username, the Telegram code and your PIN.");
     clearInputs("setup-pin", "setup-pin2");
-    setMsg("setup-msg", r.message);
-  },
+    setMsg("setup-msg", r.message || "Setup failed");
+  }),
 
-  async "admin-login"() {
+  "admin-login": () => guarded("admin-login-msg", async () => {
     const r = await api("/api/admin/login", { password: $("admin-pw").value });
     $("admin-pw").value = "";
-    if (!r.ok) return setMsg("admin-login-msg", r.message);
+    if (!r.ok) return setMsg("admin-login-msg", r.message || "Login failed");
     adminToken = r.token;
     $("admin-out").textContent = "Logged in. Session expires after 5 minutes.";
     show("admin");
-  },
+  }),
   "admin-logout": () => { adminToken = null; goHome(); },
 };
 
 async function adminAction(action) {
   const arg = $("admin-arg").value.trim();
-  const r = await api("/api/admin/action", { token: adminToken, action, arg });
+  let r;
+  try {
+    r = await api("/api/admin/action", { token: adminToken, action, arg });
+  } catch (e) {
+    if (String(e.message).includes("admin_session_expired")) { adminToken = null; $("admin-out").textContent = ""; return show("admin-login"); }
+    $("admin-out").textContent = e.message;
+    return;
+  }
   const out = $("admin-out");
   if (r.error === "admin_session_expired") { adminToken = null; out.textContent = ""; return show("admin-login"); }
   if (r.users) out.textContent = r.users.length ? r.users.map((u) =>
@@ -226,6 +279,11 @@ const SYMBOLS = ["1234567890", "!@#$%^&*()", "-_=+.,:;/?", "'\"<>[]{}~|\\"];
 const DIGITS = ["123", "456", "789"];
 
 function focusField(input) {
+  if (KB_MODE === "system") {           // OS keyboard: just focus the field, it does the rest
+    input.focus();
+    setTimeout(() => input.scrollIntoView({ block: "center", behavior: "smooth" }), 300);
+    return;
+  }
   kbTarget = input;
   reveal = false;
   kbLayer = input.dataset.kb === "digits" ? "digits" : "letters";
@@ -349,7 +407,7 @@ document.addEventListener("click", (e) => {
 });
 // stop the OS on-screen keyboard from popping up on the touch display - we draw our own
 document.querySelectorAll("input[data-kb]").forEach((el) => {
-  el.setAttribute("inputmode", "none");
+  el.setAttribute("inputmode", KB_MODE === "system" ? (el.dataset.kb === "digits" ? "numeric" : "text") : "none");
   el.setAttribute("autocomplete", "off");
   el.setAttribute("autocorrect", "off");
   el.setAttribute("autocapitalize", "off");
@@ -357,7 +415,8 @@ document.querySelectorAll("input[data-kb]").forEach((el) => {
 });
 document.addEventListener("focusin", (e) => { if (e.target.matches("input[data-kb]") && e.target !== kbTarget) focusField(e.target); });
 // tapping a field again after "Hide" brings the keyboard back
-document.addEventListener("pointerdown", (e) => { if (e.target.matches("input[data-kb]") && $("kb").classList.contains("hidden")) focusField(e.target); });
+document.addEventListener("pointerdown", (e) => { if (KB_MODE === "builtin" && e.target.matches("input[data-kb]") && $("kb").classList.contains("hidden")) focusField(e.target); });
+if (KB_MODE === "system") document.body.classList.add("system-kb");
 // keep the preview in sync when a physical keyboard is used
 document.addEventListener("input", (e) => { if (e.target === kbTarget) renderKb(); });
 document.addEventListener("keydown", (e) => {   // physical keyboard still works

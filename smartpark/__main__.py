@@ -145,7 +145,7 @@ def main(argv=None):
             return
         from .kiosk.server import KioskServer
         k = cfg["kiosk"]
-        kiosk = KioskServer(launcher, k["host"], k["port"])
+        kiosk = KioskServer(launcher, k["host"], k["port"], k.get("keyboard", "builtin"))
         kiosk.start()
         logging.getLogger("smartpark").info("Gateway LOCKED - log in on the kiosk (http://%s:%s)", k["host"], k["port"])
         _wait(stop)

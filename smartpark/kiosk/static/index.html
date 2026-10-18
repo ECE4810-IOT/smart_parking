@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta name="kiosk-token" content="{{TOKEN}}">
+<meta name="kiosk-keyboard" content="{{KEYBOARD}}">
 <title>SmartPark Kiosk</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -57,6 +58,7 @@
       <h1>Who are you?</h1>
       <p class="muted">Enter your username. If it is registered, an encrypted access code is sent to your Telegram.</p>
       <input id="username" data-label="Username" class="field" placeholder="username" autocomplete="off" autocapitalize="off" data-kb="text">
+      <p id="username-msg" class="msg"></p>
       <div class="row">
         <button class="btn" data-action="home">Cancel</button>
         <button class="btn primary" data-action="request">Send code</button>
