@@ -1,0 +1,45 @@
+# SmartPark bay node (Pis 2-5). Copy to bay.toml on each bay and set device_id.
+
+role = "bay"
+device_id = "bay1"            # bay1 / bay2 / bay3 / bay4 - must match the gateway's [bays] list
+data_dir = "~/smartpark_data"
+mock_hardware = false
+gateway = "gateway:8765"      # gateway hostname / LAN IP / Tailscale name
+heartbeat_s = 10
+bay_mode = "permit"           # "permit": car needs a kiosk permit, else unauthorised alert; "open": anyone
+
+[network]
+listen_host = "0.0.0.0"
+listen_port = 8765
+
+[sensor]                      # BOARD pin numbering, same wiring as Lab 1
+trigger_pin = 7
+echo_pin = 11                 # through the 1k/2k voltage divider!
+echo_timeout_s = 0.03
+temperature_c = 28.0          # speed-of-sound compensation
+min_cm = 2.0
+max_cm = 400.0
+
+[leds]                        # each LED through a 330 ohm resistor to GND (pin 14)
+green_pin = 13                # GPIO27
+yellow_pin = 15               # GPIO22
+red_pin = 16                  # GPIO23
+
+[occupancy]                   # scale-model distances; tune with /threshold
+occupied_below_cm = 10.0
+vacant_above_cm = 12.0
+window_pre_s = 1.5
+window_post_s = 2.5
+reconcile_s = 6.0
+min_confidence = 0.6
+
+[sampling]
+idle_period_s = 0.5           # 2 Hz when nothing happens (saves CPU/power)
+active_period_s = 0.1         # 10 Hz while something moves
+idle_burst = 3                # median of 3 pings per idle sample
+active_change_cm = 2.0
+active_hold_s = 5.0
+
+[ml]
+model_path = "models/event_model.joblib"   # relative to data_dir; rule-based fallback if missing
+record_label = ""                          # or use: python -m smartpark bay --config ... --record arrival

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="kiosk-token" content="{{TOKEN}}">
+<title>SmartPark Kiosk</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">P</span> SmartPark</div>
+  <div class="status-pills">
+    <span id="pill-net" class="pill">Online</span>
+    <span id="pill-night" class="pill hidden">Night mode</span>
+    <span id="pill-barrier" class="pill hidden">Barrier open</span>
+  </div>
+  <div id="clock" class="clock">--:--</div>
+</header>
+
+<main id="app">
+  <!-- LOCKED: admin must log in before the system runs (Activity 3) -->
+  <section id="scr-locked" class="screen">
+    <div class="panel narrow">
+      <h1>System locked</h1>
+      <p class="muted">Administrator login is required to start SmartPark. The password decrypts the secure vault.</p>
+      <input id="unlock-pw" type="password" class="field" placeholder="Admin password" autocomplete="off" data-kb="text">
+      <p id="unlock-msg" class="msg"></p>
+      <button class="btn primary wide" data-action="unlock">Unlock system</button>
+    </div>
+  </section>
+
+  <!-- HOME -->
+  <section id="scr-home" class="screen">
+    <div class="home-grid">
+      <div class="panel">
+        <div class="free-count"><span id="free-n">-</span><small>of <span id="total-n">-</span> bays free</small></div>
+        <div id="bay-map" class="bay-map"></div>
+        <div class="legend">
+          <span><i class="dot vacant"></i>Free</span><span><i class="dot assigned"></i>Reserved</span>
+          <span><i class="dot occupied"></i>Occupied</span><span><i class="dot offline"></i>Offline</span>
+        </div>
+      </div>
+      <div class="panel side">
+        <button class="btn primary big" data-action="go-username">Unlock my bay</button>
+        <button class="btn" data-action="go-setup">New user setup</button>
+        <h3>Live activity</h3>
+        <ul id="feed" class="feed"></ul>
+        <button class="btn ghost small" data-action="go-admin-login">Admin</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- USERNAME -->
+  <section id="scr-username" class="screen">
+    <div class="panel narrow">
+      <h1>Who are you?</h1>
+      <p class="muted">Enter your username. If it is registered, an encrypted access code is sent to your Telegram.</p>
+      <input id="username" class="field" placeholder="username" autocomplete="off" autocapitalize="off" data-kb="text">
+      <div class="row">
+        <button class="btn" data-action="home">Cancel</button>
+        <button class="btn primary" data-action="request">Send code</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CODE + PIN -->
+  <section id="scr-code" class="screen">
+    <div class="panel narrow">
+      <h1>Enter your code</h1>
+      <p class="muted">Check Telegram. Type the 6-digit code you received and your 6-digit PIN - the kiosk decrypts the code with your PIN.</p>
+      <div class="timer"><div id="timer-bar"></div></div>
+      <p class="muted small" id="timer-text"></p>
+      <label>Code from Telegram</label>
+      <input id="code" class="field mono" inputmode="numeric" maxlength="6" placeholder="------" data-kb="digits">
+      <label>Your PIN</label>
+      <input id="pin" class="field mono" type="password" inputmode="numeric" maxlength="6" placeholder="------" data-kb="digits">
+      <p id="code-msg" class="msg"></p>
+      <div class="row">
+        <button class="btn" data-action="home">Cancel</button>
+        <button class="btn primary" data-action="verify">Unlock</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section id="scr-result" class="screen">
+    <div class="panel narrow center">
+      <div id="result-icon" class="result-icon"></div>
+      <h1 id="result-title"></h1>
+      <p id="result-text" class="lead"></p>
+      <button class="btn primary wide" data-action="home">Done</button>
+    </div>
+  </section>
+
+  <!-- NEW USER SETUP -->
+  <section id="scr-setup" class="screen">
+    <div class="panel narrow">
+      <h1>New user setup</h1>
+      <p class="muted">Use the enrolment code from the admin. Link Telegram first by sending <b>/register &lt;username&gt; &lt;code&gt;</b> to the bot.</p>
+      <input id="setup-user" class="field" placeholder="username" autocomplete="off" data-kb="text">
+      <input id="setup-code" class="field mono" placeholder="enrolment code" autocomplete="off" data-kb="text">
+      <input id="setup-pin" class="field mono" type="password" inputmode="numeric" maxlength="6" placeholder="choose 6-digit PIN" data-kb="digits">
+      <input id="setup-pin2" class="field mono" type="password" inputmode="numeric" maxlength="6" placeholder="repeat PIN" data-kb="digits">
+      <p id="setup-msg" class="msg"></p>
+      <div class="row">
+        <button class="btn" data-action="home">Cancel</button>
+        <button class="btn primary" data-action="setup">Save PIN</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ADMIN LOGIN -->
+  <section id="scr-admin-login" class="screen">
+    <div class="panel narrow">
+      <h1>Administrator</h1>
+      <input id="admin-pw" type="password" class="field" placeholder="Admin password" autocomplete="off" data-kb="text">
+      <p id="admin-login-msg" class="msg"></p>
+      <div class="row">
+        <button class="btn" data-action="home">Cancel</button>
+        <button class="btn primary" data-action="admin-login">Log in</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ADMIN PANEL -->
+  <section id="scr-admin" class="screen">
+    <div class="panel">
+      <div class="row spread"><h1>Admin panel</h1><button class="btn" data-action="admin-logout">Log out</button></div>
+      <div class="admin-grid">
+        <button class="btn" data-admin="users">Users</button>
+        <button class="btn" data-admin="report">Today's report</button>
+        <button class="btn" data-admin="alerts">Alerts</button>
+        <button class="btn" data-admin="open">Open barrier</button>
+        <button class="btn" data-admin="night">Toggle night mode</button>
+        <button class="btn" data-admin="lights">LED test</button>
+      </div>
+      <div class="row">
+        <input id="admin-arg" class="field" placeholder="username" autocomplete="off" data-kb="text">
+        <button class="btn" data-admin="adduser">Add user</button>
+        <button class="btn" data-admin="unlockuser">Unlock</button>
+        <button class="btn danger" data-admin="removeuser">Remove</button>
+      </div>
+      <pre id="admin-out" class="admin-out"></pre>
+    </div>
+  </section>
+</main>
+
+<!-- on-screen keyboard (no OS keyboard needed on the touch display) -->
+<div id="kb" class="kb hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

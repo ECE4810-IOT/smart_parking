@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+config/gateway.toml
+config/bay.toml
+benchmark_results.csv
+.pytest_cache/
+
+# never commit runtime data or secrets
+smartpark_data/
+vault.json
+unlock_guard.json
+*.pem
+*.db
+metrics/
+dataset/
+models/
+*.joblib
+.env

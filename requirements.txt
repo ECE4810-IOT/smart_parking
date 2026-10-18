@@ -1,0 +1,10 @@
+# On Raspberry Pi OS install these with apt (see setup.sh) - pip is only a fallback.
+cryptography>=3.4
+requests>=2.25
+# bay nodes / training only
+scikit-learn>=1.0
+joblib>=1.0
+numpy>=1.20
+# optional
+matplotlib>=3.5   # confusion-matrix plot in train.py
+pytest>=7         # tests

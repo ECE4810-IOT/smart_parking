@@ -1,0 +1,290 @@
+// SmartPark kiosk front-end (Touch Display 2). No external libraries.
+"use strict";
+
+const TOKEN = document.querySelector('meta[name="kiosk-token"]').content;
+const $ = (id) => document.getElementById(id);
+const IDLE_MS = 60000;
+
+let current = null;
+let requestId = null;
+let timerHandle = null;
+let adminToken = null;
+let lastActivity = Date.now();
+let lastState = null;
+
+// ------------------------------------------------------------------ API
+async function api(path, body) {
+  const opts = body === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Kiosk-Token": TOKEN },
+    body: JSON.stringify(body),
+  };
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+// ------------------------------------------------------------------ screens
+function show(name) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
+  $("scr-" + name).classList.add("active");
+  current = name;
+  hideKb();
+  const first = $("scr-" + name).querySelector("input");
+  if (first) { setTimeout(() => focusField(first), 50); }
+}
+
+function clearInputs(...ids) { ids.forEach((id) => { $(id).value = ""; }); }
+function setMsg(id, text, ok = false) { const el = $(id); el.textContent = text || ""; el.classList.toggle("ok", ok); }
+
+function goHome() {
+  stopTimer();
+  requestId = null;
+  clearInputs("username", "code", "pin", "setup-user", "setup-code", "setup-pin", "setup-pin2", "admin-pw", "admin-arg");
+  ["code-msg", "setup-msg", "admin-login-msg"].forEach((m) => setMsg(m, ""));
+  show(lastState && lastState.locked ? "locked" : "home");
+}
+
+function result(kind, title, text) {
+  const icon = $("result-icon");
+  icon.className = "result-icon " + kind;
+  icon.textContent = kind === "ok" ? "✓" : kind === "bad" ? "✕" : "!";
+  $("result-title").textContent = title;
+  $("result-text").textContent = text;
+  show("result");
+}
+
+// ------------------------------------------------------------------ state polling
+function renderState(s) {
+  lastState = s;
+  if (s.locked) {
+    if (current !== "locked") show("locked");
+    if (s.retry_in) setMsg("unlock-msg", `Locked - try again in ${s.retry_in} s`);
+    return;
+  }
+  if (current === "locked" || current === null) show("home");
+  $("free-n").textContent = s.free;
+  $("total-n").textContent = s.total;
+  const map = $("bay-map");
+  map.innerHTML = "";
+  s.bays.forEach((b) => {
+    const d = document.createElement("div");
+    d.className = "bay " + b.status;
+    const label = { vacant: "free", assigned: "reserved", unauthorised: "unauthorised!" }[b.status] || b.status;
+    d.innerHTML = `<div class="name"></div><div class="st"></div>`;
+    d.querySelector(".name").textContent = b.label;
+    d.querySelector(".st").textContent = label;
+    map.appendChild(d);
+  });
+  const feed = $("feed");
+  feed.innerHTML = "";
+  (s.feed || []).slice(0, 7).forEach((f) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="t"></span><span></span>`;
+    li.children[0].textContent = f.time;
+    li.children[1].textContent = f.text;
+    li.children[1].className = f.level;
+    feed.appendChild(li);
+  });
+  pill("pill-net", s.telegram_online ? "Online" : "Offline - queuing", s.telegram_online ? "ok" : "bad", true);
+  pill("pill-night", "Night mode", "warn", s.night_mode);
+  pill("pill-barrier", "Barrier open", "ok", s.barrier_open);
+}
+
+function pill(id, text, cls, visible) {
+  const p = $(id);
+  p.textContent = text;
+  p.className = "pill " + cls + (visible ? "" : " hidden");
+}
+
+async function poll() {
+  try { renderState(await api("/api/state")); }
+  catch (e) { pill("pill-net", "Kiosk server unreachable", "bad", true); }
+}
+
+// ------------------------------------------------------------------ actions
+const actions = {
+  async unlock() {
+    const pw = $("unlock-pw").value;
+    if (!pw) return;
+    setMsg("unlock-msg", "Decrypting vault...", true);
+    const r = await api("/api/unlock", { password: pw });
+    $("unlock-pw").value = "";
+    setMsg("unlock-msg", r.ok ? "" : r.message, r.ok);
+    if (r.ok) { await poll(); show("home"); }
+  },
+  home: goHome,
+  "go-username": () => { clearInputs("username"); show("username"); },
+  "go-setup": () => show("setup"),
+  "go-admin-login": () => show("admin-login"),
+
+  async request() {
+    const u = $("username").value.trim();
+    if (u.length < 3) return;
+    const r = await api("/api/access/request", { username: u });
+    if (r.status === "full") return result("warn", "Car park full", "There are no free bays right now. Please try again later.");
+    requestId = r.request_id;
+    clearInputs("code", "pin");
+    setMsg("code-msg", "");
+    show("code");
+    startTimer(r.expires_in || 60);
+  },
+
+  async verify() {
+    const code = $("code").value.trim(), pin = $("pin").value.trim();
+    if (code.length !== 6 || pin.length !== 6) return setMsg("code-msg", "Code and PIN must both be 6 digits");
+    const r = await api("/api/access/verify", { request_id: requestId, code, pin });
+    if (r.ok) {
+      stopTimer();
+      return result("ok", `Welcome, ${r.user}`, `Proceed to ${r.bay_label} (yellow light). Your permit is valid until ${r.until}.`);
+    }
+    if (r.no_bay) return result("warn", "No bay available", "Your code was correct but no bay could be reserved. Please contact the admin.");
+    if (r.locked) { stopTimer(); return result("bad", "Account locked", "Too many wrong attempts. The admin has been notified."); }
+    if (r.expired) { stopTimer(); return result("warn", "Code expired", "Please start again to get a new code."); }
+    clearInputs("pin");
+    if (r.attempts_left <= 0) { stopTimer(); return result("bad", "Access denied", "Please start again."); }
+    setMsg("code-msg", `Incorrect code or PIN - ${r.attempts_left} attempt(s) left`);
+  },
+
+  async setup() {
+    const u = $("setup-user").value.trim(), c = $("setup-code").value.trim();
+    const p1 = $("setup-pin").value.trim(), p2 = $("setup-pin2").value.trim();
+    if (p1 !== p2) return setMsg("setup-msg", "PINs do not match");
+    const r = await api("/api/setup", { username: u, code: c, pin: p1 });
+    if (r.ok) return result("ok", "Setup complete", "You can now unlock a bay with your username, the Telegram code and your PIN.");
+    clearInputs("setup-pin", "setup-pin2");
+    setMsg("setup-msg", r.message);
+  },
+
+  async "admin-login"() {
+    const r = await api("/api/admin/login", { password: $("admin-pw").value });
+    $("admin-pw").value = "";
+    if (!r.ok) return setMsg("admin-login-msg", r.message);
+    adminToken = r.token;
+    $("admin-out").textContent = "Logged in. Session expires after 5 minutes.";
+    show("admin");
+  },
+  "admin-logout": () => { adminToken = null; goHome(); },
+};
+
+async function adminAction(action) {
+  const arg = $("admin-arg").value.trim();
+  const r = await api("/api/admin/action", { token: adminToken, action, arg });
+  const out = $("admin-out");
+  if (r.error === "admin_session_expired") { adminToken = null; out.textContent = ""; return show("admin-login"); }
+  if (r.users) out.textContent = r.users.length ? r.users.map((u) =>
+      `${u.username.padEnd(16)} ${u.status}${u.telegram ? "  telegram" : ""}${u.locked ? "  LOCKED" : ""}`).join("\n") : "No users yet.";
+  else if (r.report) out.textContent = formatReport(r.report);
+  else if (r.alerts) out.textContent = r.alerts.map((a) =>
+      `${new Date(a.ts * 1000).toLocaleTimeString()}  [${a.level}] ${a.text}`).join("\n") || "No alerts.";
+  else out.textContent = r.message || JSON.stringify(r);
+  if (r.code) out.textContent += `\n\nGive this code to the user in person (valid ${r.ttl_min} min).`;
+}
+
+function formatReport(r) {
+  const occ = Object.entries(r.occupancy_pct).map(([b, p]) => `${b} ${p}%`).join(", ");
+  return [
+    `Arrivals ${r.arrivals}   Departures ${r.departures}`,
+    `Average occupancy ${r.avg_occupancy_pct}%  (${occ})`,
+    `Average stay ${r.avg_dwell_min ?? "-"} min   Peak hour ${r.peak_hour ?? "-"}`,
+    `Unauthorised parking ${r.unauthorised}`,
+    `False alarms avoided by ML: ${r.transients_ignored} movement, ${r.noise_ignored} noise`,
+    `Avg edge inference ${r.avg_infer_ms ?? "-"} ms`,
+  ].join("\n");
+}
+
+// ------------------------------------------------------------------ OTP countdown
+function startTimer(seconds) {
+  stopTimer();
+  const end = Date.now() + seconds * 1000;
+  const tick = () => {
+    const left = Math.max(0, Math.round((end - Date.now()) / 1000));
+    $("timer-bar").style.width = (100 * left / seconds) + "%";
+    $("timer-text").textContent = left ? `Code expires in ${left} s` : "Code expired";
+    if (!left) { stopTimer(); if (current === "code") result("warn", "Code expired", "Please start again to get a new code."); }
+  };
+  tick();
+  timerHandle = setInterval(tick, 1000);
+}
+function stopTimer() { if (timerHandle) clearInterval(timerHandle); timerHandle = null; }
+
+// ------------------------------------------------------------------ on-screen keyboard
+let kbTarget = null;
+const ROWS_TEXT = ["1234567890", "qwertyuiop", "asdfghjkl", "zxcvbnm_"];
+const ROWS_DIGITS = ["123", "456", "789"];
+
+function focusField(input) {
+  kbTarget = input;
+  input.focus();
+  buildKb(input.dataset.kb || "text");
+  setTimeout(() => input.scrollIntoView({ block: "center", behavior: "smooth" }), 30);
+}
+
+function buildKb(mode) {
+  const kb = $("kb");
+  kb.innerHTML = "";
+  kb.className = "kb " + mode;
+  const rows = mode === "digits" ? ROWS_DIGITS : ROWS_TEXT;
+  rows.forEach((r) => {
+    const row = document.createElement("div");
+    row.className = "kr";
+    [...r].forEach((ch) => row.appendChild(key(ch, () => type(ch))));
+    kb.appendChild(row);
+  });
+  const last = document.createElement("div");
+  last.className = "kr";
+  last.appendChild(key("⌫", backspace, "wide"));
+  if (mode === "digits") last.appendChild(key("0", () => type("0")));
+  if (mode === "text") last.appendChild(key("ABC", toggleCase, "wide"));
+  last.appendChild(key("Done", enter, "wide go"));
+  kb.appendChild(last);
+  document.body.classList.add("kb-open");
+  document.body.classList.toggle("kb-digits", mode === "digits");
+}
+
+let upper = false;
+function toggleCase() { upper = !upper; }
+function key(label, fn, cls = "") {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.className = cls;
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); fn(); lastActivity = Date.now(); });
+  return b;
+}
+function type(ch) {
+  if (!kbTarget) return;
+  const max = kbTarget.maxLength > 0 ? kbTarget.maxLength : 64;
+  if (kbTarget.value.length >= max) return;
+  kbTarget.value += upper && /[a-z]/.test(ch) ? ch.toUpperCase() : ch;
+}
+function backspace() { if (kbTarget) kbTarget.value = kbTarget.value.slice(0, -1); }
+function enter() {
+  if (!kbTarget) return hideKb();
+  const inputs = [...$("scr-" + current).querySelectorAll("input")];
+  const i = inputs.indexOf(kbTarget);
+  if (i >= 0 && i < inputs.length - 1) return focusField(inputs[i + 1]);
+  hideKb();
+  const primary = $("scr-" + current).querySelector(".btn.primary");
+  if (primary) primary.click();
+}
+function hideKb() { $("kb").classList.add("hidden"); document.body.classList.remove("kb-open", "kb-digits"); kbTarget = null; }
+
+// ------------------------------------------------------------------ wiring
+document.addEventListener("click", (e) => {
+  lastActivity = Date.now();
+  const a = e.target.closest("[data-action]");
+  if (a && actions[a.dataset.action]) return actions[a.dataset.action]();
+  const ad = e.target.closest("[data-admin]");
+  if (ad) return adminAction(ad.dataset.admin);
+});
+document.addEventListener("focusin", (e) => { if (e.target.matches("input[data-kb]") && e.target !== kbTarget) focusField(e.target); });
+document.addEventListener("keydown", (e) => {   // physical keyboard still works
+  lastActivity = Date.now();
+  if (e.key === "Enter" && e.target.matches("input")) { e.preventDefault(); kbTarget = e.target; enter(); }
+});
+
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }, 1000);
+setInterval(() => {   // return to the home screen when idle (privacy on a shared kiosk)
+  if (current && !["home", "locked"].includes(current) && Date.now() - lastActivity > IDLE_MS) { adminToken = null; goHome(); }
+}, 5000);
+setInterval(poll, 2000);
+poll();

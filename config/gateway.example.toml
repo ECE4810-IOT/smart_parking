@@ -1,0 +1,59 @@
+# SmartPark gateway (Pi 1: touch display + barrier). Copy to gateway.toml and edit.
+# Secrets (bot token, API keys) are NOT stored here - `init-gateway` puts them in the encrypted vault.
+
+role = "gateway"
+device_id = "gateway"
+data_dir = "~/smartpark_data"
+mock_hardware = false
+
+[network]
+listen_host = "0.0.0.0"
+listen_port = 8765
+
+# Address of every bay node: LAN IP, hostname.local, or Tailscale name/IP (100.x.y.z).
+# Tailscale works even when campus Wi-Fi blocks device-to-device traffic.
+[bays]
+bay1 = "bay1:8765"
+bay2 = "bay2:8765"
+bay3 = "bay3:8765"
+bay4 = "bay4:8765"
+
+[kiosk]
+enabled = true
+host = "127.0.0.1"   # local only - the touch display's browser runs on this Pi
+port = 8080
+
+[telegram]
+enabled = true
+poll_timeout_s = 25
+coalesce_window_s = 3.0
+
+[thingspeak]
+enabled = true
+interval_s = 20
+
+[access]
+otp_ttl_s = 60
+max_attempts = 3
+lockout_base_s = 300
+request_cooldown_s = 30
+global_requests_per_min = 10
+default_stay_min = 120
+no_show_min = 10
+overstay_reminder_min = 10
+enrol_code_ttl_min = 30
+
+[barrier]
+mode = "mock"        # "servo" once an SG90 is connected to servo_pin
+servo_pin = 12       # BOARD numbering (GPIO18, hardware PWM capable)
+led_pin = 18         # BOARD numbering (GPIO24) - LED that mirrors the barrier
+open_s = 8
+
+[security]
+max_clock_skew_s = 60
+heartbeat_timeout_s = 35
+
+[night_mode]
+enabled = false
+start = "22:00"
+end = "06:00"
