@@ -66,6 +66,18 @@ if [[ "$ROLE" == "gateway" ]]; then
   # labwc (Wayland, current Raspberry Pi OS)
   grep -q kiosk-browser.sh "$HOME/.config/labwc/autostart" 2>/dev/null || \
     echo "$DIR/scripts/kiosk-browser.sh &" >> "$HOME/.config/labwc/autostart"
+  # keyboard = "system": labwc hides on-screen keyboards behind fullscreen windows, so the kiosk then runs as a
+  # maximised app window - this rule strips its title bar
+  RC="$HOME/.config/labwc/rc.xml"
+  [[ -f "$RC" ]] || printf '<?xml version="1.0"?>\n<openbox_config xmlns="http://openbox.org/3.4/rc">\n</openbox_config>\n' > "$RC"
+  grep -q 'title="SmartPark Kiosk"' "$RC" || sed -i 's#</openbox_config>#\t<windowRules>\n\t\t<windowRule title="SmartPark Kiosk" serverDecoration="no">\n\t\t\t<action name="Maximize"/>\n\t\t</windowRule>\n\t</windowRules>\n</openbox_config>#' "$RC"
+  # auto-hide the Raspberry Pi taskbar so the kiosk window gets the whole screen (touch the top edge to show it)
+  INI="$HOME/.config/wf-panel-pi/wf-panel-pi.ini"
+  mkdir -p "$(dirname "$INI")"; touch "$INI"
+  if ! grep -q '^autohide=' "$INI"; then
+    if grep -q '^\[panel\]' "$INI"; then sed -i '/^\[panel\]/a autohide=true\nautohide_duration=300' "$INI"
+    else printf '[panel]\nautohide=true\nautohide_duration=300\n' >> "$INI"; fi
+  fi
   # X11 / older desktops
   cat > "$HOME/.config/autostart/smartpark-kiosk.desktop" <<EOF
 [Desktop Entry]
