@@ -343,4 +343,5 @@ Standard cryptography comes from `cryptography`, `hashlib`, `hmac` and `secrets`
 - **"unknown device" in the gateway log:** that bay's public key isn't trusted. Re-run the key exchange.
 - **Bays unreachable on campus Wi-Fi:** use the Tailscale names or IPs in `[bays]` and `gateway`.
 - **Wrong distances:** check the echo voltage divider. Tune with `/threshold bayN <cm>` and set `temperature_c`.
+- **False arrivals/departures or lots of `noise` events:** the thresholds are too close to where the parked car reads. Measure the empty and parked distances (`sensor-test`) and put `occupied_below_cm` / `vacant_above_cm` in the gap with a few cm of margin each side. Example from bay 1: parked 7.5–9.3 cm (spikes to 13), empty 17.4–22 cm -> 13 / 16. `/threshold` only lasts until the bay restarts; put the values in `config/bay.toml` to keep them.
 - **Model won't load on a bay:** train on a Pi (same scikit-learn version) or delete the model to use the rules.

@@ -31,7 +31,9 @@ from ..security.tickets import TicketError, verify_ticket
 from ..util import metric
 
 log = logging.getLogger(__name__)
-FAULT_AFTER = 10    # consecutive failed readings before declaring a sensor fault
+FAULT_AFTER = 10    # consecutive failed readings before declaring a sensor fault ...
+FAULT_AFTER_S = 3.0  # ... AND no valid reading for this long: at 10 Hz a car moving in at an angle
+                     # loses ~1 s of echoes, which is not a wiring fault
 RECOVER_AFTER = 5   # consecutive good readings before declaring it recovered (no flapping)
 
 
@@ -58,6 +60,7 @@ class BayNode:
         self.fault = False
         self._fail_streak = 0
         self._ok_streak = 0
+        self._last_ok = time.monotonic()
         self.mode = "idle"
         self.rate_hz = 0.0
         self.started = time.time()
@@ -123,13 +126,16 @@ class BayNode:
         if d is None:
             self._fail_streak += 1
             self._ok_streak = 0
-            if self._fail_streak >= FAULT_AFTER and not self.fault:
+            silent_s = time.monotonic() - self._last_ok
+            if self._fail_streak >= FAULT_AFTER and silent_s >= FAULT_AFTER_S and not self.fault:
                 self.fault = True
-                log.warning("Sensor fault: %d consecutive failed readings", self._fail_streak)
-                self._send_event({"kind": "fault", "detail": f"{self._fail_streak} failed readings"})
+                log.warning("Sensor fault: %d consecutive failed readings (%.1f s)", self._fail_streak, silent_s)
+                self._send_event({"kind": "fault",
+                                  "detail": f"{self._fail_streak} failed readings in {silent_s:.0f} s"})
                 self._refresh_lights()
         else:
             self._ok_streak += 1
+            self._last_ok = time.monotonic()
             if self.fault and self._ok_streak >= RECOVER_AFTER:
                 self.fault = False
                 log.info("Sensor recovered")

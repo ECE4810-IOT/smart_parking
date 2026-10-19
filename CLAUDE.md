@@ -23,7 +23,7 @@ ECE4810 (Monash) IoT project, due 21 Oct 2026. Secure multi-node smart parking s
 
 ## Issues already found and fixed (don't reintroduce)
 - Telegram `_call()` HTTP timeout kwarg clashed with getUpdates `timeout` -> renamed to `http_timeout`.
-- Sensor fault flapping -> fault after 10 bad reads, recover after 5 good; echo-low wait; timeout 0.04 s;
+- Sensor fault flapping -> fault after 10 bad reads AND >= 3 s with no valid reading (a car moving in loses ~1 s of echoes at 10 Hz), recover after 5 good; echo-low wait; timeout 0.04 s;
   gateway rate-limits fault alerts (1 per bay per 10 min).
 - Kiosk: stale per-boot token after gateway restart made buttons silently fail -> page auto-reloads (boot id)
   and every action shows an error message.
