@@ -70,7 +70,9 @@ if [[ "$ROLE" == "gateway" ]]; then
   # maximised app window - this rule strips its title bar
   RC="$HOME/.config/labwc/rc.xml"
   [[ -f "$RC" ]] || printf '<?xml version="1.0"?>\n<openbox_config xmlns="http://openbox.org/3.4/rc">\n</openbox_config>\n' > "$RC"
-  grep -q 'title="SmartPark Kiosk"' "$RC" || sed -i 's#</openbox_config>#\t<windowRules>\n\t\t<windowRule title="SmartPark Kiosk" serverDecoration="no">\n\t\t\t<action name="Maximize"/>\n\t\t</windowRule>\n\t</windowRules>\n</openbox_config>#' "$RC"
+  # match the app id, not the page title: the window maps before the page has set its title
+  sed -i 's#<windowRule title="SmartPark Kiosk"#<windowRule identifier="chrome-127.0.0.1_*"#' "$RC"
+  grep -q 'identifier="chrome-127.0.0.1_\*"' "$RC" || sed -i 's#</openbox_config>#\t<windowRules>\n\t\t<windowRule identifier="chrome-127.0.0.1_*" serverDecoration="no">\n\t\t\t<action name="Maximize"/>\n\t\t</windowRule>\n\t</windowRules>\n</openbox_config>#' "$RC"
   # auto-hide the Raspberry Pi taskbar so the kiosk window gets the whole screen (touch the top edge to show it)
   INI="$HOME/.config/wf-panel-pi/wf-panel-pi.ini"
   mkdir -p "$(dirname "$INI")"; touch "$INI"

@@ -10,7 +10,7 @@ CFG="$(dirname "$0")/../config/gateway.toml"
 MODE="--kiosk $URL"
 # keyboard = "system" -> let Chromium talk to the Wayland on-screen keyboard (squeekboard).
 # labwc draws on-screen keyboards *under* fullscreen windows, so use a maximised app window instead of
-# --kiosk; the labwc windowRule for title "SmartPark Kiosk" (see README) removes its title bar.
+# --kiosk; the labwc windowRule for app id "chrome-127.0.0.1_*" (setup.sh) removes its title bar.
 if grep -Eq '^\s*keyboard\s*=\s*"system"' "$CFG" 2>/dev/null; then
   MODE="--enable-wayland-ime --wayland-text-input-version=3 --start-maximized --app=$URL"
 fi
